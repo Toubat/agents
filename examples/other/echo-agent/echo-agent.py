@@ -2,16 +2,8 @@ import asyncio
 import logging
 
 from dotenv import load_dotenv
-
 from livekit import rtc
-from livekit.agents import (
-    ATTRIBUTE_AGENT_STATE,
-    AgentState,
-    AutoSubscribe,
-    JobContext,
-    WorkerOptions,
-    cli,
-)
+from livekit.agents import AutoSubscribe, JobContext, WorkerOptions, cli
 from livekit.agents.vad import VADEventType
 from livekit.plugins import silero
 
@@ -45,12 +37,12 @@ async def entrypoint(ctx: JobContext):
         rtc.TrackPublishOptions(source=rtc.TrackSource.SOURCE_MICROPHONE),
     )
     # speech queue holds AudioFrames
-    queue = asyncio.Queue(maxsize=1000)  # 10 seconds of audio (1000 frames * 10ms)
+    queue = asyncio.Queue(maxsize=500)  # 10 seconds of audio (1000 frames * 10ms)
     is_speaking = False
     is_echoing = False
 
-    async def _set_state(state: AgentState):
-        await ctx.room.local_participant.set_attributes({ATTRIBUTE_AGENT_STATE: state})
+    async def _set_state(state):
+        await ctx.room.local_participant.set_attributes({"lk.agent.state": state})
 
     await _set_state("listening")
 
@@ -69,6 +61,10 @@ async def entrypoint(ctx: JobContext):
     async def _process_vad():
         nonlocal is_speaking, is_echoing
         async for vad_event in vad_stream:
+            if vad_event.type == VADEventType.INFERENCE_DONE:
+                continue
+
+            logger.info(vad_event)
             if is_echoing:  # Skip VAD processing while echoing
                 continue
             if vad_event.type == VADEventType.START_OF_SPEECH:
