@@ -15,13 +15,13 @@ import logging
 import os
 import time
 from io import BytesIO
+from typing import cast
 
 import aiohttp
 from dotenv import load_dotenv
 from hive_data_classes import HiveResponse, from_dict
-from PIL import Image
-
 from livekit import agents, rtc
+from PIL import Image
 
 load_dotenv()
 
@@ -83,7 +83,8 @@ async def entrypoint(ctx: agents.JobContext):
         once we have completed subscription to that video track.
         This creates a backgrond task to process frames from each track
         """
-        asyncio.create_task(process_track(participant, track))
+        if track.kind == rtc.TrackKind.KIND_VIDEO:
+            asyncio.create_task(process_track(participant, cast(rtc.VideoTrack, track)))
 
     async def process_track(participant: rtc.RemoteParticipant, track: rtc.VideoTrack):
         """
@@ -100,14 +101,18 @@ async def entrypoint(ctx: agents.JobContext):
                 last_processed_time = current_time
                 await check_frame(participant, frame)
 
-    async def check_frame(participant: rtc.RemoteParticipant, frame: rtc.VideoFrame):
+    async def check_frame(
+        participant: rtc.RemoteParticipant, frame: rtc.VideoFrameEvent
+    ):
         """
         Uses thehive.ai API to check the frame for any classifications we care about
         """
 
         # get the current frame and convert to png format
         argb_frame = frame.frame.convert(rtc.VideoBufferType.RGBA)
-        image = Image.frombytes("RGBA", (argb_frame.width, argb_frame.height), argb_frame.data)
+        image = Image.frombytes(
+            "RGBA", (argb_frame.width, argb_frame.height), argb_frame.data
+        )
         buffer = BytesIO()
         image.save(buffer, format="PNG")
         buffer.seek(0)  # reset buffer position to beginning after writing
